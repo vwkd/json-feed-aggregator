@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "@std/assert": "jsr:@std/assert@^1.0.4",
+    "@vwkd/feed": "jsr:@vwkd/feed@^0.0.3"
+  }
+}

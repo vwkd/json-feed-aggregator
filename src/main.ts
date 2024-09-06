@@ -77,8 +77,12 @@ export class FeedAggregator<T extends FeedInfo> {
    * - errors if item with same ID already added previously
    * - errors if `expireAt` is in the past
    * - if item with same ID is already in cache
+   *   - errors if `shouldApproximateDate` is different
    *   - if item is identical, ignores added item, takes existing item from cache
-   *   - if item is different, takes added item, will overwrite existing item in cache
+   *   - if item is different
+   *     - takes added item, will overwrite existing item in cache
+   *     - if `shouldApproximateDate` uses published date of existing item and current date as modified date
+   * - if `shouldApproximateDate` uses current date as published date
    *
    * @param items items to add
    */
@@ -89,7 +93,9 @@ export class FeedAggregator<T extends FeedInfo> {
       this.#initialized = true;
     }
 
-    for (const { item, expireAt } of items) {
+    for (const { item: _item, expireAt, shouldApproximateDate } of items) {
+      // clone to avoid modifying input arguments
+      const item = structuredClone(_item);
       const itemId = item.id;
 
       if (this.#itemsAdded.some(({ item: { id } }) => id == itemId)) {
@@ -102,23 +108,57 @@ export class FeedAggregator<T extends FeedInfo> {
         );
       }
 
+      // todo: remove `date_modified`?
+      if (
+        shouldApproximateDate && (item.date_published || item.date_modified)
+      ) {
+        throw new Error(
+          `Can't approximate date for item with ID '${itemId}' if already has date`,
+        );
+      }
+
       const existingItem = this.#itemsCached.find(({ item }) =>
         item.id == itemId
       );
 
       if (existingItem) {
+        if (shouldApproximateDate != existingItem.shouldApproximateDate) {
+          throw new Error(
+            `Should approximate date for item with ID '${itemId}' is different than for cached`,
+          );
+        }
+
+        // note: not if `shouldApproximateDate` since `date_published` differs since set for existing item but not for added item
         if (equal(existingItem, item)) {
           // don't use added item
           continue;
-        } else {
-          // don't use existing item
-          this.#itemsCached = this.#itemsCached.filter(({ item }) =>
-            item.id != itemId
-          );
+        }
+
+        if (shouldApproximateDate) {
+          const { date_published: _, ...itemRest } = item;
+          const { date_published: __, ...existingItemRest } = existingItem.item;
+
+          // note: if differs only in `date_published`, set for existing item but not for added item
+          if (equal(itemRest, existingItemRest)) {
+            // don't use added item
+            continue;
+          }
+
+          item.date_published = existingItem.item.date_published;
+          item.date_modified = this.#now.toISOString();
+        }
+
+        // don't use existing item
+        this.#itemsCached = this.#itemsCached.filter(({ item }) =>
+          item.id != itemId
+        );
+      } else {
+        if (shouldApproximateDate) {
+          item.date_published = this.#now.toISOString();
         }
       }
 
-      this.#itemsAdded.push({ item, expireAt });
+      this.#itemsAdded.push({ item, expireAt, shouldApproximateDate });
     }
   }
 

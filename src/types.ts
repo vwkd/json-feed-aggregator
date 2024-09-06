@@ -8,4 +8,6 @@ export interface AggregatorItem {
   item: Item;
   /** Expiry date of item */
   expireAt?: Date;
+  /** Should use current date as published or last modified date */
+  shouldApproximateDate?: boolean;
 }

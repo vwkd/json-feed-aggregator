@@ -1,4 +1,7 @@
 {
+  "name": "@vwkd/feed-aggregator",
+  "version": "0.0.1",
+  "exports": "./src/main.ts",
   "tasks": {
     "test": "deno test --unstable-kv"
   },

@@ -6,9 +6,10 @@ JSON Feed aggregator using Deno KV
 
 ## Features
 
-- create stateful JSON Feed Version 1.1
-- add one or more items
-- serialize to JSON
+- cache items in Deno KV
+- update existing items
+- approximate published and modified date as current date
+- expire items, e.g. feed of future events
 
 
 

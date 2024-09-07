@@ -21,7 +21,7 @@ const DENO_KV_MAX_BATCH_SIZE = 1000;
  * - creates JSON Feed with added items and remaining existing items from cache
  * - caches added items with optional expiry if not already identical in cache
  * - beware: existing items that aren't in added items anymore and have no expiry won't be deleted from cache forever!
- * - beware: expiry is earliest time after which Deno KV deletes items, may get slightly expired ones but doesn't matter, don't bother to do deletion work manually!
+ * - beware: expiry is earliest time after which Deno KV deletes items, filter out expired ones, don't bother to delete manually, Deno KV will delete eventually!
  */
 export class FeedAggregator<T extends FeedInfo> {
   #initialized = false;
@@ -51,7 +51,7 @@ export class FeedAggregator<T extends FeedInfo> {
   /**
    * Initialize cached items from KV store
    *
-   * - filter out expired items, will get deleted by Deno KV eventually
+   * - beware: might get expired items, run `clean()` before using!
    * - beware: must be called first and only once!
    */
   async #init(): Promise<void> {
@@ -66,10 +66,21 @@ export class FeedAggregator<T extends FeedInfo> {
     const items = entries
       .map((item) => item.value);
 
-    const itemsWithoutExpired = items
-      .filter(({ expireAt }) => !expireAt || expireAt > this.#now);
+    this.#itemsCached = items;
+  }
 
-    this.#itemsCached = itemsWithoutExpired;
+  /**
+   * Clean up expired items if any
+   *
+   * - in case Deno KV hasn't deleted them yet
+   * - in case items have expired since created instance or added
+   * - beware: must be called first and every time!
+   */
+  #clean(): void {
+    this.#itemsCached = this.#itemsCached
+      .filter(({ expireAt }) => !expireAt || expireAt > this.#now);
+    this.#itemsAdded = this.#itemsAdded
+      .filter(({ expireAt }) => !expireAt || expireAt > this.#now);
   }
 
   /**
@@ -93,6 +104,8 @@ export class FeedAggregator<T extends FeedInfo> {
       await this.#init();
       this.#initialized = true;
     }
+
+    this.#clean();
 
     for (const { item: _item, expireAt, shouldApproximateDate } of items) {
       // clone to avoid modifying input arguments
@@ -176,6 +189,8 @@ export class FeedAggregator<T extends FeedInfo> {
       await this.#init();
       this.#initialized = true;
     }
+
+    this.#clean();
 
     if (this.#itemsAdded.length > 0) {
       // note: `ok` property of result will always be `true` since transaction lacks `.check()`s

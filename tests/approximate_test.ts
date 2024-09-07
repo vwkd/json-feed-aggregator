@@ -51,19 +51,20 @@ const ITEM3_2 = {
 };
 
 Deno.test("add", async () => {
-  const now = new Date();
+  const currentDate = { value: new Date() };
+
   const expected = JSON.stringify({
     version: VERSION,
     ...INFO,
     items: [ITEM1, ITEM2, ITEM3].map((item) => ({
       ...item,
-      date_published: now.toISOString(),
+      date_published: currentDate.value.toISOString(),
     })),
   });
 
   const kv = await Deno.openKv(":memory:");
 
-  const feed = new FeedAggregator(kv, PREFIX, INFO, now);
+  const feed = new FeedAggregator(kv, PREFIX, INFO, currentDate);
   await feed.add({ item: ITEM1, shouldApproximateDate: true });
   await feed.add(
     ...[ITEM2, ITEM3].map((item) => ({ item, shouldApproximateDate: true })),
@@ -77,20 +78,21 @@ Deno.test("add", async () => {
 });
 
 Deno.test("overwrite, equal", async () => {
-  const now = new Date();
+  const currentDate = { value: new Date() };
+  const date_published = currentDate.value.toISOString();
+
   const expected = JSON.stringify({
     version: VERSION,
     ...INFO,
     items: [ITEM1, ITEM2, ITEM3].map((item) => ({
       ...item,
-      date_published: now.toISOString(),
+      date_published,
     })),
   });
-  const dateInFuture = new Date(Date.now() + DELAY_MS);
 
   const kv = await Deno.openKv(":memory:");
 
-  const feed = new FeedAggregator(kv, PREFIX, INFO, now);
+  const feed = new FeedAggregator(kv, PREFIX, INFO, currentDate);
   await feed.add({ item: ITEM1, shouldApproximateDate: true });
   await feed.add(
     ...[ITEM2, ITEM3].map((item) => ({ item, shouldApproximateDate: true })),
@@ -102,7 +104,8 @@ Deno.test("overwrite, equal", async () => {
 
   await delay(DELAY_MS * 2);
 
-  const feed2 = new FeedAggregator(kv, PREFIX, INFO, dateInFuture);
+  currentDate.value = new Date();
+  const feed2 = new FeedAggregator(kv, PREFIX, INFO, currentDate);
   await feed2.add({ item: ITEM1, shouldApproximateDate: true });
   await feed2.add(
     ...[ITEM2, ITEM3].map((item) => ({ item, shouldApproximateDate: true })),
@@ -116,29 +119,21 @@ Deno.test("overwrite, equal", async () => {
 });
 
 Deno.test("overwrite, different", async () => {
-  const now = new Date();
+  const currentDate = { value: new Date() };
+  const date_published = currentDate.value.toISOString();
+
   const expected = JSON.stringify({
     version: VERSION,
     ...INFO,
     items: [ITEM1, ITEM2, ITEM3].map((item) => ({
       ...item,
-      date_published: now.toISOString(),
-    })),
-  });
-  const dateInFuture = new Date(Date.now() + DELAY_MS);
-  const expected2 = JSON.stringify({
-    version: VERSION,
-    ...INFO,
-    items: [ITEM1_2, ITEM2_2, ITEM3_2].map((item) => ({
-      ...item,
-      date_published: now.toISOString(),
-      date_modified: dateInFuture.toISOString(),
+      date_published,
     })),
   });
 
   const kv = await Deno.openKv(":memory:");
 
-  const feed = new FeedAggregator(kv, PREFIX, INFO, now);
+  const feed = new FeedAggregator(kv, PREFIX, INFO, currentDate);
   await feed.add({ item: ITEM1, shouldApproximateDate: true });
   await feed.add(
     ...[ITEM2, ITEM3].map((item) => ({ item, shouldApproximateDate: true })),
@@ -150,7 +145,20 @@ Deno.test("overwrite, different", async () => {
 
   await delay(DELAY_MS * 2);
 
-  const feed2 = new FeedAggregator(kv, PREFIX, INFO, dateInFuture);
+  currentDate.value = new Date();
+  const date_modified = currentDate.value.toISOString();
+
+  const expected2 = JSON.stringify({
+    version: VERSION,
+    ...INFO,
+    items: [ITEM1_2, ITEM2_2, ITEM3_2].map((item) => ({
+      ...item,
+      date_published,
+      date_modified,
+    })),
+  });
+
+  const feed2 = new FeedAggregator(kv, PREFIX, INFO, currentDate);
   await feed2.add({ item: ITEM1_2, shouldApproximateDate: true });
   await feed2.add(
     ...[ITEM2_2, ITEM3_2].map((item) => ({

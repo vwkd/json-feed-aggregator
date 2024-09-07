@@ -8,10 +8,10 @@ export type {
   Item,
   TextItem,
 } from "@vwkd/feed";
-export type { AggregatorItem } from "./types.ts";
+export type { AggregatorItem, SharedDate } from "./types.ts";
 import { Feed, type FeedInfo } from "@vwkd/feed";
 import { equal } from "@std/assert";
-import type { AggregatorItem } from "./types.ts";
+import type { AggregatorItem, SharedDate } from "./types.ts";
 
 const DENO_KV_MAX_BATCH_SIZE = 1000;
 
@@ -28,7 +28,7 @@ export class FeedAggregator<T extends FeedInfo> {
   #kv: Deno.Kv;
   #prefix: string[];
   #info: T;
-  #now: Date;
+  #currentDate?: SharedDate;
   #itemsCached: AggregatorItem[] = [];
   #itemsAdded: AggregatorItem[] = [];
 
@@ -38,14 +38,19 @@ export class FeedAggregator<T extends FeedInfo> {
    * @param kv Deno KV store
    * @param prefix prefix for keys
    * @param info Feed info
-   * @param now current date
+   * @param currentDate current date
    */
   // todo: validate arguments
-  constructor(kv: Deno.Kv, prefix: string[], info: T, now: Date = new Date()) {
+  constructor(
+    kv: Deno.Kv,
+    prefix: string[],
+    info: T,
+    currentDate?: SharedDate,
+  ) {
     this.#kv = kv;
     this.#prefix = prefix;
     this.#info = info;
-    this.#now = now;
+    this.#currentDate = currentDate;
   }
 
   /**
@@ -75,12 +80,15 @@ export class FeedAggregator<T extends FeedInfo> {
    * - in case Deno KV hasn't deleted them yet
    * - in case items have expired since created instance or added
    * - beware: must be called first and every time!
+   * - note: take `now` as argument to avoid slight time gap
+   *
+   * @param now current date
    */
-  #clean(): void {
+  #clean(now: Date): void {
     this.#itemsCached = this.#itemsCached
-      .filter(({ expireAt }) => !expireAt || expireAt > this.#now);
+      .filter(({ expireAt }) => !expireAt || expireAt > now);
     this.#itemsAdded = this.#itemsAdded
-      .filter(({ expireAt }) => !expireAt || expireAt > this.#now);
+      .filter(({ expireAt }) => !expireAt || expireAt > now);
   }
 
   /**
@@ -100,12 +108,14 @@ export class FeedAggregator<T extends FeedInfo> {
    */
   // todo: validate arguments
   async add(...items: AggregatorItem[]): Promise<void> {
+    const now = this.#currentDate?.value || new Date();
+
     if (!this.#initialized) {
       await this.#init();
       this.#initialized = true;
     }
 
-    this.#clean();
+    this.#clean(now);
 
     for (const { item: _item, expireAt, shouldApproximateDate } of items) {
       // clone to avoid modifying input arguments
@@ -116,7 +126,7 @@ export class FeedAggregator<T extends FeedInfo> {
         throw new Error(`Item with ID '${itemId}' already added`);
       }
 
-      if (expireAt && expireAt <= this.#now) {
+      if (expireAt && expireAt <= now) {
         throw new Error(
           `Expiry date for item with ID '${itemId}' is not in future`,
         );
@@ -159,7 +169,7 @@ export class FeedAggregator<T extends FeedInfo> {
           }
 
           item.date_published = existingItem.item.date_published;
-          item.date_modified = this.#now.toISOString();
+          item.date_modified = now.toISOString();
         }
 
         // don't use existing item
@@ -168,7 +178,7 @@ export class FeedAggregator<T extends FeedInfo> {
         );
       } else {
         if (shouldApproximateDate) {
-          item.date_published = this.#now.toISOString();
+          item.date_published = now.toISOString();
         }
       }
 
@@ -185,12 +195,14 @@ export class FeedAggregator<T extends FeedInfo> {
    * @returns feed as JSON
    */
   async toJSON(): Promise<string> {
+    const now = this.#currentDate?.value || new Date();
+
     if (!this.#initialized) {
       await this.#init();
       this.#initialized = true;
     }
 
-    this.#clean();
+    this.#clean(now);
 
     if (this.#itemsAdded.length > 0) {
       // note: `ok` property of result will always be `true` since transaction lacks `.check()`s
@@ -201,7 +213,7 @@ export class FeedAggregator<T extends FeedInfo> {
           value: item,
           type: "set" as const,
           expireIn: item.expireAt &&
-            (item.expireAt.getTime() - this.#now.getTime()),
+            (item.expireAt.getTime() - now.getTime()),
         })))
         .commit();
     }

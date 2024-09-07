@@ -12,9 +12,11 @@ export type { AggregatorItem, Options, SharedDate } from "./types.ts";
 import { Feed, type FeedInfo } from "@vwkd/feed";
 import { equal } from "@std/assert";
 import { chunk } from "@std/collections";
+import { getLogger, type Logger } from "@std/log";
 import type { AggregatorItem, Options, SharedDate } from "./types.ts";
 
 const DENO_KV_MAX_BATCH_SIZE = 1000;
+const LIBRARY_NAME = "feed-aggregator";
 
 /**
  * JSON Feed aggregator using Deno KV
@@ -29,6 +31,7 @@ export class FeedAggregator<T extends FeedInfo> {
   #kv: Deno.Kv;
   #prefix: string[];
   #info: T;
+  #log: Logger;
   #currentDate?: SharedDate;
   #itemsCached: AggregatorItem[] = [];
   #itemsAdded: AggregatorItem[] = [];
@@ -53,7 +56,10 @@ export class FeedAggregator<T extends FeedInfo> {
     this.#kv = kv;
     this.#prefix = prefix;
     this.#info = info;
+    this.#log = getLogger(LIBRARY_NAME);
     this.#currentDate = currentDate;
+
+    this.#log.info(`Creating feed aggregator`, { prefix, info, options });
   }
 
   /**
@@ -68,6 +74,8 @@ export class FeedAggregator<T extends FeedInfo> {
       return;
     }
 
+    this.#log.debug(`Reading items from cache`);
+
     const entriesIterator = this.#kv.list<AggregatorItem>({
       prefix: this.#prefix,
     }, {
@@ -78,6 +86,10 @@ export class FeedAggregator<T extends FeedInfo> {
 
     const items = entries
       .map((item) => item.value);
+
+    this.#log.debug(
+      `Read ${items.length} item${items.length == 1 ? "" : "s"} from cache`,
+    );
 
     this.#itemsCached = items;
 
@@ -95,10 +107,31 @@ export class FeedAggregator<T extends FeedInfo> {
    * @param now current date
    */
   #clean(now: Date): void {
-    this.#itemsCached = this.#itemsCached
+    const itemsCached = this.#itemsCached
       .filter(({ expireAt }) => !expireAt || expireAt > now);
-    this.#itemsAdded = this.#itemsAdded
+    const itemsAdded = this.#itemsAdded
       .filter(({ expireAt }) => !expireAt || expireAt > now);
+
+    if (
+      itemsCached.length == this.#itemsCached.length &&
+      itemsAdded.length == this.#itemsAdded.length
+    ) {
+      return;
+    }
+
+    this.#log.debug(
+      `Cleaning up ${
+        this.#itemsCached.length - itemsCached.length
+      } expired cached items`,
+    );
+    this.#log.debug(
+      `Cleaning up ${
+        this.#itemsAdded.length - itemsAdded.length
+      } expired added items`,
+    );
+
+    this.#itemsCached = itemsCached;
+    this.#itemsAdded = itemsAdded;
   }
 
   /**
@@ -113,6 +146,8 @@ export class FeedAggregator<T extends FeedInfo> {
     if (this.#itemsAdded.length == 0) {
       return;
     }
+
+    this.#log.debug(`Writing added items to cache`);
 
     const items = this.#itemsAdded.map((item) => ({
       key: [...this.#prefix, item.item.id],
@@ -134,6 +169,10 @@ export class FeedAggregator<T extends FeedInfo> {
 
     this.#itemsCached = [...this.#itemsCached, ...this.#itemsAdded];
     this.#itemsAdded = [];
+
+    this.#log.debug(
+      `Wrote ${items.length} item${items.length > 1 ? "s" : ""} to cache`,
+    );
   }
 
   /**
@@ -155,6 +194,10 @@ export class FeedAggregator<T extends FeedInfo> {
   async add(...items: AggregatorItem[]): Promise<void> {
     const now = this.#currentDate?.value || new Date();
 
+    this.#log.debug(
+      `Adding item${items.length > 1 ? "s" : ""} at ${now.toISOString()}`,
+    );
+
     await this.#read();
 
     this.#clean(now);
@@ -164,11 +207,16 @@ export class FeedAggregator<T extends FeedInfo> {
       const item = structuredClone(_item);
       const itemId = item.id;
 
+      this.#log.debug(`Item`, item);
+
       if (this.#itemsAdded.some(({ item: { id } }) => id == itemId)) {
-        throw new Error(`Item with ID '${itemId}' already added`);
+        throw new Error(`Already added`);
       }
 
       if (expireAt && expireAt <= now) {
+        this.#log.debug(
+          `Skipping since already expired at ${expireAt.toISOString()}`,
+        );
         continue;
       }
 
@@ -177,7 +225,9 @@ export class FeedAggregator<T extends FeedInfo> {
         shouldApproximateDate && (item.date_published || item.date_modified)
       ) {
         throw new Error(
-          `Can't approximate date for item with ID '${itemId}' if already has date`,
+          `Should approximate date but already has ${
+            item.date_published ? "published" : "modified"
+          } date`,
         );
       }
 
@@ -186,15 +236,17 @@ export class FeedAggregator<T extends FeedInfo> {
       );
 
       if (existingItem) {
+        this.#log.debug(`Existing item`, existingItem.item);
+
         if (shouldApproximateDate != existingItem.shouldApproximateDate) {
           throw new Error(
-            `Should approximate date for item with ID '${itemId}' is different than for cached`,
+            `Should approximate date ${shouldApproximateDate} differs from existing ${existingItem.shouldApproximateDate}`,
           );
         }
 
         // note: not if `shouldApproximateDate` since `date_published` differs since set for existing item but not for added item
         if (equal(existingItem, item)) {
-          // don't use added item
+          this.#log.debug(`Skipping since existing is identical`);
           continue;
         }
 
@@ -204,13 +256,20 @@ export class FeedAggregator<T extends FeedInfo> {
 
           // note: if differs only in `date_published`, set for existing item but not for added item
           if (equal(itemRest, existingItemRest)) {
-            // don't use added item
+            // don't add already existing item
+            this.#log.debug(`Skipping since existing is identical`);
             continue;
           }
 
           item.date_published = existingItem.item.date_published;
           item.date_modified = now.toISOString();
+
+          this.#log.debug(
+            `Approximate published date from existing and modified date using current date`,
+          );
         }
+
+        this.#log.debug(`Overwriting`);
 
         // don't use existing item
         this.#itemsCached = this.#itemsCached.filter(({ item }) =>
@@ -218,8 +277,11 @@ export class FeedAggregator<T extends FeedInfo> {
         );
       } else {
         if (shouldApproximateDate) {
+          this.#log.debug(`Approximate published date using current date`);
           item.date_published = now.toISOString();
         }
+
+        this.#log.debug(`Adding`);
       }
 
       this.#itemsAdded.push({ item, expireAt, shouldApproximateDate });
@@ -236,6 +298,8 @@ export class FeedAggregator<T extends FeedInfo> {
    */
   async toJSON(): Promise<string> {
     const now = this.#currentDate?.value || new Date();
+
+    this.#log.debug(`Get feed as JSON at ${now.toISOString()}`);
 
     await this.#read();
 

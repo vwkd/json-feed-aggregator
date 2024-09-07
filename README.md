@@ -61,3 +61,24 @@ await feed.add(...[
 
 console.log(await feed.toJSON());
 ```
+
+### Activate logging
+
+- set up `feed-aggregator` logger in `setup`
+- beware: must call `setup` before `FeedAggregator`!
+
+```js
+import { ConsoleHandler, setup } from "@std/log";
+
+setup({
+  handlers: {
+    console: new ConsoleHandler("INFO"),
+  },
+  loggers: {
+    "feed-aggregator": {
+      level: "INFO",
+      handlers: ["console"],
+    },
+  },
+});
+```

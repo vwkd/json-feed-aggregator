@@ -1,28 +1,29 @@
 import { assertEquals } from "@std/assert";
 import { FeedAggregator } from "../src/main.ts";
 
-const kv = await Deno.openKv(":memory:");
+const PREFIX = ["foo", "bar"];
 
-Deno.test("minimal", async () => {
-  const info = {
-    title: "Example Feed",
-    home_page_url: "https://example.org",
-    feed_url: "https://example.org/feed.json",
-  };
+const VERSION = "https://jsonfeed.org/version/1.1";
+const INFO = {
+  title: "Example Feed",
+  home_page_url: "https://example.org",
+  feed_url: "https://example.org/feed.json",
+};
 
-  const prefix = ["minimal"];
-
-  const feed = new FeedAggregator(kv, prefix, info);
-
-  const version = "https://jsonfeed.org/version/1.1";
-  const items = [] as const;
+Deno.test("create", async () => {
   const expected = JSON.stringify({
-    version,
-    ...info,
-    items,
+    version: VERSION,
+    ...INFO,
+    items: [],
   });
+
+  const kv = await Deno.openKv(":memory:");
+
+  const feed = new FeedAggregator(kv, PREFIX, INFO);
 
   const actual = await feed.toJSON();
 
+  kv.close();
+
   assertEquals(actual, expected);
-})
+});

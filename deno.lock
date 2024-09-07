@@ -3,6 +3,7 @@
   "packages": {
     "specifiers": {
       "jsr:@std/assert@^1.0.4": "jsr:@std/assert@1.0.4",
+      "jsr:@std/async@^1.0.5": "jsr:@std/async@1.0.5",
       "jsr:@std/internal@^1.0.3": "jsr:@std/internal@1.0.3",
       "jsr:@vwkd/feed@^0.0.3": "jsr:@vwkd/feed@0.0.3"
     },
@@ -12,6 +13,9 @@
         "dependencies": [
           "jsr:@std/internal@^1.0.3"
         ]
+      },
+      "@std/async@1.0.5": {
+        "integrity": "31d68214bfbb31bd4c6022401d484e3964147c76c9220098baa703a39b6c2da6"
       },
       "@std/internal@1.0.3": {
         "integrity": "208e9b94a3d5649bd880e9ca38b885ab7651ab5b5303a56ed25de4755fb7b11e"
@@ -25,6 +29,7 @@
   "workspace": {
     "dependencies": [
       "jsr:@std/assert@^1.0.4",
+      "jsr:@std/async@^1.0.5",
       "jsr:@vwkd/feed@^0.0.3"
     ]
   }

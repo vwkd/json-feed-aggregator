@@ -57,9 +57,14 @@ export class FeedAggregator<T extends FeedInfo> {
    * Initialize cached items from KV store
    *
    * - beware: might get expired items, run `clean()` before using!
-   * - beware: must be called first and only once!
+   * - beware: must be called first!
    */
   async #init(): Promise<void> {
+    // call only once
+    if (this.#initialized) {
+      return;
+    }
+
     const entriesIterator = this.#kv.list<AggregatorItem>({
       prefix: this.#prefix,
     }, {
@@ -72,6 +77,8 @@ export class FeedAggregator<T extends FeedInfo> {
       .map((item) => item.value);
 
     this.#itemsCached = items;
+
+    this.#initialized = true;
   }
 
   /**
@@ -110,10 +117,7 @@ export class FeedAggregator<T extends FeedInfo> {
   async add(...items: AggregatorItem[]): Promise<void> {
     const now = this.#currentDate?.value || new Date();
 
-    if (!this.#initialized) {
-      await this.#init();
-      this.#initialized = true;
-    }
+    await this.#init();
 
     this.#clean(now);
 
@@ -197,10 +201,7 @@ export class FeedAggregator<T extends FeedInfo> {
   async toJSON(): Promise<string> {
     const now = this.#currentDate?.value || new Date();
 
-    if (!this.#initialized) {
-      await this.#init();
-      this.#initialized = true;
-    }
+    await this.#init();
 
     this.#clean(now);
 

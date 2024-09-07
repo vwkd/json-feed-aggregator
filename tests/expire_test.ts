@@ -67,3 +67,54 @@ Deno.test("add", async () => {
 
   assertEquals(actual2, expected2);
 });
+
+Deno.test("overwrite, equal", async () => {
+  const expected = JSON.stringify({
+    version: VERSION,
+    ...INFO,
+    items: [ITEM1, ITEM2, ITEM3],
+  });
+  const expected2 = JSON.stringify({
+    version: VERSION,
+    ...INFO,
+    items: [],
+  });
+
+  const dateInFuture = new Date(Date.now() + DELAY_MS * 2);
+
+  const kv = await Deno.openKv(":memory:");
+
+  const feed = new FeedAggregator(kv, PREFIX, INFO);
+  await feed.add({ item: ITEM1, expireAt: dateInFuture });
+  await feed.add(
+    ...[ITEM2, ITEM3].map((item) => ({ item, expireAt: dateInFuture })),
+  );
+
+  const actual = await feed.toJSON();
+
+  assertEquals(actual, expected);
+
+  await delay(DELAY_MS);
+
+  const dateInFuture2 = new Date(Date.now() + DELAY_MS * 3);
+
+  const feed2 = new FeedAggregator(kv, PREFIX, INFO);
+  await feed2.add({ item: ITEM1, expireAt: dateInFuture2 });
+  await feed2.add(
+    ...[ITEM2, ITEM3].map((item) => ({ item, expireAt: dateInFuture2 })),
+  );
+
+  await delay(DELAY_MS * 2);
+
+  const actual2 = await feed2.toJSON();
+
+  assertEquals(actual2, expected);
+
+  await delay(DELAY_MS * 2);
+
+  const actual3 = await feed2.toJSON();
+
+  kv.close();
+
+  assertEquals(actual3, expected2);
+});

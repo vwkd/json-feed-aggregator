@@ -1,6 +1,14 @@
 import type { Item } from "@vwkd/feed";
 
 /**
+ * Feed options
+ */
+export interface Options {
+  /** Current date */
+  currentDate?: SharedDate;
+}
+
+/**
  * Item with options
  */
 export interface AggregatorItem {

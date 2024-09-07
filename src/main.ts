@@ -38,13 +38,14 @@ export class FeedAggregator<T extends FeedInfo> {
    * @param kv Deno KV store
    * @param prefix prefix for keys
    * @param info Feed info
+   * @param now current date
    */
   // todo: validate arguments
-  constructor(kv: Deno.Kv, prefix: string[], info: T) {
+  constructor(kv: Deno.Kv, prefix: string[], info: T, now: Date = new Date()) {
     this.#kv = kv;
     this.#prefix = prefix;
     this.#info = info;
-    this.#now = new Date();
+    this.#now = now;
   }
 
   /**

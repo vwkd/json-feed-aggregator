@@ -187,6 +187,7 @@ export class FeedAggregator<T extends FeedInfo> {
    *     - takes added item, will overwrite existing item in cache
    *     - if `shouldApproximateDate` uses published date of existing item and current date as modified date
    * - if `shouldApproximateDate` uses current date as published date
+   * - store added items in cache
    *
    * @param items items to add
    */
@@ -286,12 +287,13 @@ export class FeedAggregator<T extends FeedInfo> {
 
       this.#itemsAdded.push({ item, expireAt, shouldApproximateDate });
     }
+
+    this.#write(now);
   }
 
   /**
    * Get feed as JSON
    *
-   * - store added items in cache
    * - add all items to feed and return it as JSON
    *
    * @returns feed as JSON
@@ -304,8 +306,6 @@ export class FeedAggregator<T extends FeedInfo> {
     await this.#read();
 
     this.#clean(now);
-
-    this.#write(now);
 
     const feed = new Feed(this.#info);
 
